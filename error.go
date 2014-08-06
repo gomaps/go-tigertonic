@@ -50,18 +50,32 @@ func errorStatusCode(err error) int {
 	return http.StatusInternalServerError
 }
 
-func writeJSONError(w http.ResponseWriter, err error) {
+type JSONErrorResponse struct {
+	Errors [1]JSONError `json:"errors"`
+}
+
+type JSONError struct {
+	Error string `json:"error"`
+	Desc  string `json:"description"`
+}
+
+func WriteJSONError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(errorStatusCode(err))
-	if jsonErr := json.NewEncoder(w).Encode(map[string]string{
-		"description": err.Error(),
-		"error":       errorName(err, "error"),
-	}); nil != jsonErr {
+
+	jsonErr := [1]JSONError{{
+		Error: errorName(err, "error"),
+		Desc:  err.Error(),
+	}}
+
+	jsonErrResponse := JSONErrorResponse{Errors: jsonErr}
+
+	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
 	}
 }
 
-func writePlaintextError(w http.ResponseWriter, err error) {
+func WritePlaintextError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(errorStatusCode(err))
 	fmt.Fprintf(w, "%s: %s", errorName(err, "error"), err)

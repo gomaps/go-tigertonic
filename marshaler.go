@@ -108,7 +108,7 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if "PATCH" == r.Method || "POST" == r.Method || "PUT" == r.Method {
 		if rq == nilRequest {
-			writeJSONError(w, NewMarshalerError(
+			WriteJSONError(w, NewMarshalerError(
 				"empty interface is not suitable for %s request bodies",
 				r.Method,
 			))
@@ -118,7 +118,7 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			r.Header.Get("Content-Type"),
 			"application/json",
 		) {
-			writeJSONError(w, NewHTTPEquivError(NewMarshalerError(
+			WriteJSONError(w, NewHTTPEquivError(NewMarshalerError(
 				"Content-Type header is %s, not application/json",
 				r.Header.Get("Content-Type"),
 			), http.StatusUnsupportedMediaType))
@@ -127,7 +127,7 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		decoder := reflect.ValueOf(json.NewDecoder(r.Body))
 		out := decoder.MethodByName("Decode").Call([]reflect.Value{rq})
 		if !out[0].IsNil() {
-			writeJSONError(w, NewHTTPEquivError(
+			WriteJSONError(w, NewHTTPEquivError(
 				out[0].Interface().(error),
 				http.StatusBadRequest,
 			))
@@ -136,8 +136,8 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body.Close()
 	} else if nilRequest != rq {
 		log.Printf(
-			"%s request body isn't an empty interface; this is weird and is being ignored\n",
-			r.Method,
+			"%s request body isn't an empty interface; this is weird and is being ignored\n%v",
+			r.Method, rq,
 		)
 	}
 	if reflect.Slice == rq.Elem().Kind() || reflect.Map == rq.Elem().Kind() {
@@ -172,9 +172,9 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !out[3].IsNil() {
 		err := out[3].Interface().(error)
 		if _, ok := err.(HTTPEquivError); ok {
-			writeJSONError(w, err)
+			WriteJSONError(w, err)
 		} else {
-			writeJSONError(w, NewHTTPEquivError(err, code))
+			WriteJSONError(w, NewHTTPEquivError(err, code))
 		}
 		return
 	}
