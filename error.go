@@ -51,24 +51,42 @@ func errorStatusCode(err error) int {
 }
 
 type JSONErrorResponse struct {
-	Errors [1]JSONError `json:"errors"`
+	Errors []error `json:"errors"`
 }
 
 type JSONError struct {
-	Error string `json:"error"`
-	Desc  string `json:"description"`
+	ErrorStr  string `json:"error"`
+	ErrorCode int    `json:"errorCode,omitempty"`
+	Field     string `json:"field,omitempty"`
+	Desc      string `json:"description,omitempty"`
+}
+
+func (e JSONError) Error() string {
+	return fmt.Sprintf("%s (%d) - %s (%s)", e.ErrorStr, e.ErrorCode, e.Desc, e.Field)
 }
 
 func WriteJSONError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(errorStatusCode(err))
 
-	jsonErr := [1]JSONError{{
-		Error: errorName(err, "error"),
-		Desc:  err.Error(),
-	}}
+	var errs []error
+	errs = append(errs, JSONError{
+		ErrorStr: errorName(err, "error"),
+		Desc:     err.Error(),
+	})
 
-	jsonErrResponse := JSONErrorResponse{Errors: jsonErr}
+	jsonErrResponse := JSONErrorResponse{Errors: errs}
+
+	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
+		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
+	}
+}
+
+func WriteValidationErrors(w http.ResponseWriter, errs []error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+
+	jsonErrResponse := JSONErrorResponse{Errors: errs}
 
 	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)

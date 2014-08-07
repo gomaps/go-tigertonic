@@ -105,7 +105,8 @@ func TestBadRequest(t *testing.T) {
 	if http.StatusBadRequest != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"EOF\",\"error\":\"error\"}\n" != w.Body.String() {
+
+	if "{\"errors\":[{\"error\":\"error\",\"description\":\"EOF\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -121,7 +122,7 @@ func TestBadRequestSyntaxError(t *testing.T) {
 	if http.StatusBadRequest != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"invalid character '}' looking for beginning of value\",\"error\":\"json.SyntaxError\"}\n" != w.Body.String() {
+	if "{\"errors\":[{\"error\":\"json.SyntaxError\",\"description\":\"invalid character '}' looking for beginning of value\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -136,7 +137,7 @@ func TestInternalServerError(t *testing.T) {
 	if http.StatusInternalServerError != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"foo\",\"error\":\"error\"}\n" != w.Body.String() {
+	if "{\"errors\":[{\"error\":\"error\",\"description\":\"foo\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -151,7 +152,7 @@ func TestHTTPEquivError(t *testing.T) {
 	if http.StatusServiceUnavailable != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"foo\",\"error\":\"tigertonic.ServiceUnavailable\"}\n" != w.Body.String() {
+	if "{\"errors\":[{\"error\":\"tigertonic.ServiceUnavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -168,7 +169,7 @@ func TestSnakeCaseHTTPEquivError(t *testing.T) {
 	if http.StatusServiceUnavailable != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"foo\",\"error\":\"service_unavailable\"}\n" != w.Body.String() {
+	if "{\"errors\":[{\"error\":\"service_unavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -183,7 +184,7 @@ func TestNamedError(t *testing.T) {
 	if http.StatusInternalServerError != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	if "{\"description\":\"foo\",\"error\":\"foo\"}\n" != w.Body.String() {
+	if "{\"errors\":[{\"error\":\"foo\",\"description\":\"foo\"}]}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }

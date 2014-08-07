@@ -143,6 +143,17 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if reflect.Slice == rq.Elem().Kind() || reflect.Map == rq.Elem().Kind() {
 		rq = rq.Elem()
 	}
+
+	// Run validations for this object
+	if rq != nilRequest {
+		errs := Validator.Validate(rq)
+
+		if errs != nil {
+			WriteValidationErrors(w, errs)
+			return
+		}
+	}
+
 	var out []reflect.Value
 	switch m.v.Type().NumIn() {
 	case 2:
