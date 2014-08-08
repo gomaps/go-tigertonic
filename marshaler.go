@@ -108,29 +108,35 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if "PATCH" == r.Method || "POST" == r.Method || "PUT" == r.Method {
 		if rq == nilRequest {
-			WriteJSONError(w, NewMarshalerError(
-				"empty interface is not suitable for %s request bodies",
-				r.Method,
-			))
+			WriteJSONError(w, NewMarshalerErrorEmptyInteface(r.Method))
+			/*
+				WriteJSONError(w, NewMarshalerError(
+					"empty interface is not suitable for %s request bodies",
+					r.Method,
+				))*/
 			return
 		}
 		if !strings.HasPrefix(
 			r.Header.Get("Content-Type"),
 			"application/json",
 		) {
-			WriteJSONError(w, NewHTTPEquivError(NewMarshalerError(
-				"Content-Type header is %s, not application/json",
-				r.Header.Get("Content-Type"),
-			), http.StatusUnsupportedMediaType))
+			WriteJSONError(w, NewMarshalerErrorContentType(r.Header.Get("Content-Type")))
+			/*
+				WriteJSONError(w, NewHTTPEquivError(NewMarshalerError(
+					"Content-Type header is %s, not application/json",
+					r.Header.Get("Content-Type"),
+				), http.StatusUnsupportedMediaType))*/
 			return
 		}
 		decoder := reflect.ValueOf(json.NewDecoder(r.Body))
 		out := decoder.MethodByName("Decode").Call([]reflect.Value{rq})
 		if !out[0].IsNil() {
-			WriteJSONError(w, NewHTTPEquivError(
-				out[0].Interface().(error),
-				http.StatusBadRequest,
-			))
+			WriteJSONError(w, NewJSONError(out[0].Interface().(error).Error()))
+			/*
+				WriteJSONError(w, NewHTTPEquivError(
+					out[0].Interface().(error),
+					http.StatusBadRequest,
+				))*/
 			return
 		}
 		r.Body.Close()
@@ -182,11 +188,15 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rs := out[2].Interface()
 	if !out[3].IsNil() {
 		err := out[3].Interface().(error)
-		if _, ok := err.(HTTPEquivError); ok {
-			WriteJSONError(w, err)
-		} else {
-			WriteJSONError(w, NewHTTPEquivError(err, code))
-		}
+
+		WriteJSONError(w, err)
+		/*
+			if _, ok := err.(HTTPEquivError); ok {
+				WriteJSONError(w, err)
+			} else {
+				WriteJSONError(w, NewHTTPEquivError(err, code))
+			}
+		}*/
 		return
 	}
 	if nil != header {

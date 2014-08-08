@@ -11,6 +11,56 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	UnknownErrorType   = "unknown"
+	UnknownErrorCode   = 0
+	JSONErrorType      = "json"
+	JSONErrorCode      = 9001
+	MarshalerErrorType = "marshaler"
+	MarshalerErrorCode = 9002
+)
+
+func NewMarshalerErrorEmptyInteface(method string) error {
+	return &AppError{
+		Type:           MarshalerErrorType,
+		Code:           MarshalerErrorCode,
+		Desc:           fmt.Sprintf("Empty interface is not suitable for %s request bodies", method),
+		HttpStatusCode: http.StatusInternalServerError,
+	}
+}
+
+func NewMarshalerErrorContentType(contentType string) error {
+	return &AppError{
+		Type:           MarshalerErrorType,
+		Code:           MarshalerErrorCode,
+		Desc:           fmt.Sprintf("Content-Type header is %s, not application/json", contentType),
+		HttpStatusCode: http.StatusUnsupportedMediaType,
+	}
+}
+
+func NewJSONError(desc string) error {
+	return &AppError{
+		Type:           JSONErrorType,
+		Code:           JSONErrorCode,
+		Desc:           desc,
+		HttpStatusCode: http.StatusBadRequest,
+	}
+}
+
+func NewMethodNotFoundError(desc string) error {
+	return &AppError{
+		Desc:           desc,
+		HttpStatusCode: http.StatusNotFound,
+	}
+}
+
+func NewMethodNotAllowed(desc string) error {
+	return &AppError{
+		Desc:           "Method not allowed, " + desc,
+		HttpStatusCode: http.StatusMethodNotAllowed,
+	}
+}
+
 func acceptJSON(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
 	if "" == accept {
@@ -44,38 +94,83 @@ func errorName(err error, fallback string) string {
 }
 
 func errorStatusCode(err error) int {
+	// For pointers to AppError interface
+	if appErr, ok := err.(*AppError); ok {
+		return appErr.StatusCode()
+	}
+
+	// For direct interface to AppError
+	if appErr, ok := err.(AppError); ok {
+		return appErr.StatusCode()
+	}
+
+	// For direct interface to HTTPEquiv
 	if httpEquivError, ok := err.(HTTPEquivError); ok {
 		return httpEquivError.StatusCode()
 	}
+
 	return http.StatusInternalServerError
 }
 
-type JSONErrorResponse struct {
+type AppErrorWrapper struct {
 	Errors []error `json:"errors"`
 }
 
-type JSONError struct {
-	ErrorStr  string `json:"error"`
-	ErrorCode int    `json:"errorCode,omitempty"`
-	Field     string `json:"field,omitempty"`
-	Desc      string `json:"description,omitempty"`
+type AppError struct {
+	Type           string `json:"type,omitempty"`
+	Code           int    `json:"code,omitempty"`
+	Field          string `json:"field,omitempty"`
+	Desc           string `json:"description,omitempty"`
+	HttpStatusCode int    `json:"-"`
 }
 
-func (e JSONError) Error() string {
-	return fmt.Sprintf("%s (%d) - %s (%s)", e.ErrorStr, e.ErrorCode, e.Desc, e.Field)
+func (e AppError) Error() string {
+	return e.Desc
+}
+
+func (e AppError) StatusCode() int {
+	return e.HttpStatusCode
+}
+
+func (e AppError) ErrorType() string {
+	return e.Type
+}
+
+func (e AppError) ErrorCode() int {
+	return e.Code
+}
+
+func (e AppError) ErrorDesc() string {
+	return e.Desc
+}
+
+func NewAppError(errCode int, errType string, errDesc string) *AppError {
+	return &AppError{
+		Code: errCode,
+		Type: errType,
+		Desc: errDesc,
+	}
 }
 
 func WriteJSONError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
+
 	w.WriteHeader(errorStatusCode(err))
 
-	var errs []error
-	errs = append(errs, JSONError{
-		ErrorStr: errorName(err, "error"),
-		Desc:     err.Error(),
-	})
+	//errs := []error{err}
 
-	jsonErrResponse := JSONErrorResponse{Errors: errs}
+	var errs []error
+
+	if _, ok := err.(*AppError); ok {
+		errs = []error{err}
+	} else {
+		errs = []error{AppError{
+			Type: errorName(err, "error"),
+			Desc: err.Error(),
+		}}
+	}
+
+	jsonErrResponse := AppErrorWrapper{Errors: errs}
 
 	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
@@ -86,7 +181,7 @@ func WriteValidationErrors(w http.ResponseWriter, errs []error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 
-	jsonErrResponse := JSONErrorResponse{Errors: errs}
+	jsonErrResponse := AppErrorWrapper{Errors: errs}
 
 	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
