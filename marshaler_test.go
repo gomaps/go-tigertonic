@@ -106,8 +106,8 @@ func TestBadRequest(t *testing.T) {
 		t.Fatal(w.StatusCode)
 	}
 
-	//if "{\"errors\":[{\"error\":\"error\",\"description\":\"EOF\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"json\",\"code\":9001,\"description\":\"EOF\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"error\",\"description\":\"EOF\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"json\",\"code\":9001,\"description\":\"EOF\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -123,8 +123,8 @@ func TestBadRequestSyntaxError(t *testing.T) {
 	if http.StatusBadRequest != w.StatusCode {
 		t.Fatal(w.StatusCode)
 	}
-	//if "{\"errors\":[{\"error\":\"json.SyntaxError\",\"description\":\"invalid character '}' looking for beginning of value\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"json\",\"code\":9001,\"description\":\"invalid character '}' looking for beginning of value\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"json.SyntaxError\",\"description\":\"invalid character '}' looking for beginning of value\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"json\",\"code\":9001,\"description\":\"invalid character '}' looking for beginning of value\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -140,8 +140,8 @@ func TestInternalServerError(t *testing.T) {
 		t.Fatal(w.StatusCode)
 	}
 
-	//if "{\"errors\":[{\"error\":\"error\",\"description\":\"foo\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"error\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"error\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"error\",\"description\":\"foo\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -157,8 +157,8 @@ func TestHTTPEquivError(t *testing.T) {
 		t.Fatal(w.StatusCode)
 	}
 
-	//if "{\"errors\":[{\"error\":\"tigertonic.ServiceUnavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"tigertonic.ServiceUnavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"tigertonic.ServiceUnavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"tigertonic.ServiceUnavailable\",\"description\":\"foo\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -176,8 +176,8 @@ func TestSnakeCaseHTTPEquivError(t *testing.T) {
 		t.Fatal(w.StatusCode)
 	}
 
-	//if "{\"errors\":[{\"error\":\"service_unavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"service_unavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"service_unavailable\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"service_unavailable\",\"description\":\"foo\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -193,8 +193,8 @@ func TestNamedError(t *testing.T) {
 		t.Fatal(w.StatusCode)
 	}
 
-	//if "{\"errors\":[{\"error\":\"foo\",\"description\":\"foo\"}]}\n" != w.Body.String() {
-	if "{\"errors\":[{\"type\":\"foo\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	//if "{\"error\":[{\"error\":\"foo\",\"description\":\"foo\"}]}\n" != w.Body.String() {
+	if "{\"error\":{\"type\":\"foo\",\"description\":\"foo\"}}\n" != w.Body.String() {
 		t.Fatal(w.Body.String())
 	}
 }

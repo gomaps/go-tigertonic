@@ -58,10 +58,8 @@ func SetValidationError(code int, desc string) {
 // BadField is an error type containing a field name and associated error.
 // This is the type returned from Validate.
 type BadField struct {
-	ErrorString string `json:"error"`
-	ErrorCode   int    `json:"errorCode"`
-	Field       string `json:"field"`
-	Desc        string `json:"description"`
+	Field string `json:"field"`
+	Desc  string `json:"description"`
 }
 
 func (b BadField) Error() string {
@@ -120,20 +118,16 @@ func (v V) Validate(s interface{}) []error {
 			vf := v[vt]
 			if vf == nil {
 				errs = append(errs, BadField{
-					ErrorString: ErrorValidation,
-					ErrorCode:   ErrorCodeValidation,
-					Field:       f.Name,
-					Desc:        fmt.Sprintf("undefined validator: %q", vt),
+					Field: f.Name,
+					Desc:  fmt.Sprintf("undefined validator: %q", vt),
 				})
 				continue
 			}
 			if err := vf(val); err != nil {
 				p := fmt.Sprintf("%s", err)
 				errs = append(errs, BadField{
-					ErrorString: ErrorValidation,
-					ErrorCode:   ErrorCodeValidation,
-					Field:       fieldName(&f),
-					Desc:        p,
+					Field: fieldName(&f),
+					Desc:  p,
 				})
 			}
 		}

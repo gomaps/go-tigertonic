@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	UnknownErrorType   = "unknown"
-	UnknownErrorCode   = 0
-	JSONErrorType      = "json"
-	JSONErrorCode      = 9001
-	MarshalerErrorType = "marshaler"
-	MarshalerErrorCode = 9002
+	UnknownErrorType    = "unknown"
+	UnknownErrorCode    = 0
+	JSONErrorType       = "json"
+	JSONErrorCode       = 9001
+	MarshalerErrorType  = "marshaler"
+	MarshalerErrorCode  = 9002
+	ValidationErrorType = "validation"
+	ValidationErrorCode = 8000
 )
 
 func NewMarshalerErrorEmptyInteface(method string) error {
@@ -112,14 +114,19 @@ func errorStatusCode(err error) int {
 	return http.StatusInternalServerError
 }
 
-type AppErrorWrapper struct {
-	Errors []error `json:"errors"`
+type AppErrorResponse struct {
+	Error error `json:"error"`
+}
+
+type ValidationErrorWrapper struct {
+	AppError
+	Fields []error `json:"fields"`
 }
 
 type AppError struct {
-	Type           string `json:"type,omitempty"`
-	Code           int    `json:"code,omitempty"`
-	Field          string `json:"field,omitempty"`
+	Type string `json:"type,omitempty"`
+	Code int    `json:"code,omitempty"`
+	//Field          string `json:"field,omitempty"`
 	Desc           string `json:"description,omitempty"`
 	HttpStatusCode int    `json:"-"`
 }
@@ -159,18 +166,14 @@ func WriteJSONError(w http.ResponseWriter, err error) {
 
 	//errs := []error{err}
 
-	var errs []error
-
-	if _, ok := err.(*AppError); ok {
-		errs = []error{err}
-	} else {
-		errs = []error{AppError{
+	if _, ok := err.(*AppError); !ok {
+		err = AppError{
 			Type: errorName(err, "error"),
 			Desc: err.Error(),
-		}}
+		}
 	}
 
-	jsonErrResponse := AppErrorWrapper{Errors: errs}
+	jsonErrResponse := AppErrorResponse{Error: err}
 
 	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
@@ -181,7 +184,17 @@ func WriteValidationErrors(w http.ResponseWriter, errs []error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 
-	jsonErrResponse := AppErrorWrapper{Errors: errs}
+	v := ValidationErrorWrapper{}
+	v.Type = ValidationErrorType
+	v.Code = ValidationErrorCode
+	v.Desc = "One or more fields contain a validation error"
+	v.Fields = errs
+
+	jsonErrResponse := AppErrorResponse{
+		Error: v,
+	}
+
+	//jsonErrResponse := ValidationErrorWrapper{Errors: errs}
 
 	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
