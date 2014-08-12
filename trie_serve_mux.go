@@ -30,6 +30,14 @@ func NewTrieServeMux() *TrieServeMux {
 	}
 }
 
+var (
+	pathparams map[*url.URL]url.Values
+)
+
+func init() {
+	pathparams = make(map[*url.URL]url.Values)
+}
+
 // Handle registers an http.Handler for the given HTTP method and URL pattern.
 func (mux *TrieServeMux) Handle(method, pattern string, handler http.Handler) {
 	log.Printf("handling %s %s\n", method, pattern)
@@ -50,12 +58,13 @@ func (mux *TrieServeMux) HandleNamespace(namespace string, handler http.Handler)
 	mux.add("", strings.Split(namespace, "/")[1:], handler, namespace)
 }
 
+// TODO: REMOVE UNUSED
 // Handler returns the handler to use for the given HTTP request and mutates
 // the querystring to add wildcards extracted from the URL.
 //
 // It sanitizes out any query params that might collide with params parsed
 // from the URL to avoid surprises. See TestCollidingQueryParam for the use case
-func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
+func (mux *TrieServeMux) HandlerOld(r *http.Request) (http.Handler, string) {
 	params, handler, pattern := mux.find(r, strings.Split(r.URL.Path, "/")[1:])
 	if 0 != len(params) {
 		sanitized := r.URL.Query()
@@ -67,12 +76,29 @@ func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
 	return handler, pattern
 }
 
+// Handler returns the handler to use for the given HTTP request and saves
+// the path parameters from the URL into the pathparams map
+func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
+	params, handler, pattern := mux.find(r, strings.Split(r.URL.Path, "/")[1:])
+	pathparams[r.URL] = params
+	return handler, pattern
+}
+
 // ServeHTTP routes an HTTP request to the http.Handler registered for the URL
 // pattern which matches the requested path.  It responds 404 if there is no
 // matching URL pattern and 405 if the requested HTTP method is not allowed.
 func (mux *TrieServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Allocate space for our Path Parameters
+	pathparams[r.URL] = make(url.Values)
+	defer delete(pathparams, r.URL)
+
+	// Call our handler and then the handler we are wrapping
 	handler, _ := mux.Handler(r)
 	handler.ServeHTTP(w, r)
+}
+
+func PathParams(u *url.URL) url.Values {
+	return pathparams[u]
 }
 
 // add recursively adds a URL pattern, parsing wildcards as it goes, to
