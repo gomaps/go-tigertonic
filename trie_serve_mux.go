@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // TrieServeMux is an HTTP request multiplexer that implements http.Handler
@@ -31,11 +32,12 @@ func NewTrieServeMux() *TrieServeMux {
 }
 
 var (
-	pathparams map[*url.URL]url.Values
+	pathParams      map[*url.URL]url.Values
+	pathParamsMutex sync.Mutex
 )
 
 func init() {
-	pathparams = make(map[*url.URL]url.Values)
+	pathParams = make(map[*url.URL]url.Values)
 }
 
 // Handle registers an http.Handler for the given HTTP method and URL pattern.
@@ -77,10 +79,10 @@ func (mux *TrieServeMux) HandlerOld(r *http.Request) (http.Handler, string) {
 }
 
 // Handler returns the handler to use for the given HTTP request and saves
-// the path parameters from the URL into the pathparams map
+// the path parameters from the URL into the pathParams map
 func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
 	params, handler, pattern := mux.find(r, strings.Split(r.URL.Path, "/")[1:])
-	pathparams[r.URL] = params
+	pathParams[r.URL] = params
 	return handler, pattern
 }
 
@@ -89,8 +91,8 @@ func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
 // matching URL pattern and 405 if the requested HTTP method is not allowed.
 func (mux *TrieServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Allocate space for our Path Parameters
-	pathparams[r.URL] = make(url.Values)
-	defer delete(pathparams, r.URL)
+	addPathParams(r.URL)
+	defer removePathParams(r.URL)
 
 	// Call our handler and then the handler we are wrapping
 	handler, _ := mux.Handler(r)
@@ -98,7 +100,19 @@ func (mux *TrieServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func PathParams(u *url.URL) url.Values {
-	return pathparams[u]
+	return pathParams[u]
+}
+
+func addPathParams(u *url.URL) {
+	pathParamsMutex.Lock()
+	defer pathParamsMutex.Unlock()
+	pathParams[u] = make(url.Values)
+}
+
+func removePathParams(u *url.URL) {
+	pathParamsMutex.Lock()
+	defer pathParamsMutex.Unlock()
+	defer delete(pathParams, u)
 }
 
 // add recursively adds a URL pattern, parsing wildcards as it goes, to
