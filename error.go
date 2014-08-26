@@ -114,6 +114,17 @@ func errorStatusCode(err error) int {
 	return http.StatusInternalServerError
 }
 
+// BadField is an error type containing a field name and associated error.
+// This is the type returned from Validate.
+type BadField struct {
+	Field string `json:"field"`
+	Desc  string `json:"description"`
+}
+
+func (b BadField) Error() string {
+	return fmt.Sprintf("field %s is invalid: %v", b.Field, b.Desc)
+}
+
 type AppErrorResponse struct {
 	Error error `json:"error"`
 }
@@ -124,9 +135,8 @@ type ValidationErrorWrapper struct {
 }
 
 type AppError struct {
-	Type string `json:"type,omitempty"`
-	Code int    `json:"code,omitempty"`
-	//Field          string `json:"field,omitempty"`
+	Type           string `json:"type,omitempty"`
+	Code           int    `json:"code,omitempty"`
 	Desc           string `json:"description,omitempty"`
 	HttpStatusCode int    `json:"-"`
 }
@@ -164,12 +174,12 @@ func WriteJSONError(w http.ResponseWriter, err error) {
 
 	w.WriteHeader(errorStatusCode(err))
 
-	//errs := []error{err}
-
 	if _, ok := err.(*AppError); !ok {
-		err = AppError{
-			Type: errorName(err, "error"),
-			Desc: err.Error(),
+		if _, ok = err.(*ValidationErrorWrapper); !ok {
+			err = AppError{
+				Type: errorName(err, "error"),
+				Desc: err.Error(),
+			}
 		}
 	}
 

@@ -55,17 +55,6 @@ func SetValidationError(code int, desc string) {
 	ErrorValidation = desc
 }
 
-// BadField is an error type containing a field name and associated error.
-// This is the type returned from Validate.
-type BadField struct {
-	Field string `json:"field"`
-	Desc  string `json:"description"`
-}
-
-func (b BadField) Error() string {
-	return fmt.Sprintf("field %s is invalid: %v", b.Field, b.Desc)
-}
-
 // Validate accepts a struct (or a pointer) and returns a list of errors for all
 // fields that are invalid. If all fields are valid, or s is not a struct type,
 // Validate returns nil.
