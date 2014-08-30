@@ -125,10 +125,6 @@ func (b BadField) Error() string {
 	return fmt.Sprintf("field %s is invalid: %v", b.Field, b.Desc)
 }
 
-type AppErrorResponse struct {
-	Error error `json:"error"`
-}
-
 type ValidationErrorWrapper struct {
 	AppError
 	Fields []error `json:"fields"`
@@ -183,9 +179,7 @@ func WriteJSONError(w http.ResponseWriter, err error) {
 		}
 	}
 
-	jsonErrResponse := AppErrorResponse{Error: err}
-
-	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
+	if jsonErr := json.NewEncoder(w).Encode(err); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
 	}
 }
@@ -200,13 +194,7 @@ func WriteValidationErrors(w http.ResponseWriter, errs []error) {
 	v.Desc = "One or more fields contain a validation error"
 	v.Fields = errs
 
-	jsonErrResponse := AppErrorResponse{
-		Error: v,
-	}
-
-	//jsonErrResponse := ValidationErrorWrapper{Errors: errs}
-
-	if jsonErr := json.NewEncoder(w).Encode(jsonErrResponse); nil != jsonErr {
+	if jsonErr := json.NewEncoder(w).Encode(v); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
 	}
 }
