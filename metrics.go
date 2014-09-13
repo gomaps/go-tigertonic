@@ -2,9 +2,10 @@ package tigertonic
 
 import (
 	"fmt"
-	"github.com/rcrowley/go-metrics"
 	"net/http"
 	"time"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 // Counter is an http.Handler that counts requests via go-metrics.
@@ -43,8 +44,9 @@ func (c *Counter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // CounterByStatus is an http.Handler that counts responses by their HTTP
 // status code via go-metrics.
 type CounterByStatus struct {
-	counters map[int]metrics.Counter
-	handler  http.Handler
+	counters   map[int]metrics.Counter
+	handler    http.Handler
+	filterURLs map[string]bool
 }
 
 // CountedByStatus returns an http.Handler that passes requests to an
@@ -54,6 +56,8 @@ func CountedByStatus(
 	handler http.Handler,
 	name string,
 	registry metrics.Registry,
+	//filterURLs map[string]bool,
+	filterURLs *[]string,
 ) *CounterByStatus {
 	if nil == registry {
 		registry = metrics.DefaultRegistry
@@ -109,9 +113,16 @@ func CountedByStatus(
 			panic(err)
 		}
 	}
+
+	filterMap := make(map[string]bool)
+	for _, url := range *filterURLs {
+		filterMap[url] = true
+	}
+
 	return &CounterByStatus{
-		counters: counters,
-		handler:  handler,
+		counters:   counters,
+		handler:    handler,
+		filterURLs: filterMap,
 	}
 }
 
@@ -120,7 +131,10 @@ func CountedByStatus(
 func (c *CounterByStatus) ServeHTTP(w0 http.ResponseWriter, r *http.Request) {
 	w := NewTeeHeaderResponseWriter(w0)
 	c.handler.ServeHTTP(w, r)
-	c.counters[w.StatusCode].Inc(1)
+
+	if _, ok := c.filterURLs[r.URL.Path]; !ok {
+		c.counters[w.StatusCode].Inc(1)
+	}
 }
 
 // CounterByStatusXX is an http.Handler that counts responses by the first
