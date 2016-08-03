@@ -82,6 +82,8 @@ func (mux *TrieServeMux) HandlerOld(r *http.Request) (http.Handler, string) {
 // the path parameters from the URL into the pathParams map
 func (mux *TrieServeMux) Handler(r *http.Request) (http.Handler, string) {
 	params, handler, pattern := mux.find(r, strings.Split(r.URL.Path, "/")[1:])
+	pathParamsMutex.Lock()
+	defer pathParamsMutex.Unlock()
 	pathParams[r.URL] = params
 	return handler, pattern
 }
