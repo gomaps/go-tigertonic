@@ -60,9 +60,9 @@ func (ih ifHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if nil != err {
 		if acceptJSON(r) {
-			WriteJSONError(w, err)
+			ResponseErrorWriter.WriteJSONError(w, err)
 		} else {
-			WritePlaintextError(w, err)
+			ResponseErrorWriter.WritePlaintextError(w, err)
 		}
 	}
 }

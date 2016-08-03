@@ -3,6 +3,7 @@ package tigertonic
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"reflect"
@@ -77,19 +78,29 @@ func Marshaled(i interface{}) *Marshaler {
 
 // ServeHTTP unmarshals JSON input, handles the request via the function, and
 // marshals JSON output.
+// If the output of the handler function implements io.Reader the headers must
+// contain a 'Content-Type'; the stream will be written directly to the
+// requestor without being marshaled to JSON.
+// Additionally if the output implements the io.Closer the stream will be
+// automatically closed after flushing.
 func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wHeader := w.Header()
-	if !acceptJSON(r) {
-		wHeader.Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusNotAcceptable)
-		fmt.Fprintf(
-			w,
-			"\"%s\" does not contain \"application/json\"",
+	isReader := false
+	isCloser := false
+	if 2 < m.v.Type().NumOut() {
+		out2 := m.v.Type().Out(2)
+		if reflect.Interface == out2.Kind() {
+			isReader = out2.Implements(reflect.TypeOf((*io.Reader)(nil)).Elem())
+			isCloser = out2.Implements(reflect.TypeOf((*io.Closer)(nil)).Elem())
+		}
+	}
+	if !isReader && !acceptJSON(r) {
+		ResponseErrorWriter.WritePlaintextError(w, NewHTTPEquivError(NewMarshalerError(
+			"Accept header %q does not allow \"application/json\"",
 			r.Header.Get("Accept"),
-		)
+		), http.StatusNotAcceptable))
 		return
 	}
-	wHeader.Set("Content-Type", "application/json")
 	var rq reflect.Value
 	if 2 < m.v.Type().NumIn() {
 		in2 := m.v.Type().In(2)
@@ -108,35 +119,29 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if "PATCH" == r.Method || "POST" == r.Method || "PUT" == r.Method {
 		if rq == nilRequest {
-			WriteJSONError(w, NewMarshalerErrorEmptyInteface(r.Method))
-			/*
-				WriteJSONError(w, NewMarshalerError(
-					"empty interface is not suitable for %s request bodies",
-					r.Method,
-				))*/
+			ResponseErrorWriter.WriteError(r, w, NewMarshalerError(
+				"empty interface is not suitable for %s request bodies",
+				r.Method,
+			))
 			return
 		}
 		if !strings.HasPrefix(
 			r.Header.Get("Content-Type"),
 			"application/json",
 		) {
-			WriteJSONError(w, NewMarshalerErrorContentType(r.Header.Get("Content-Type")))
-			/*
-				WriteJSONError(w, NewHTTPEquivError(NewMarshalerError(
-					"Content-Type header is %s, not application/json",
-					r.Header.Get("Content-Type"),
-				), http.StatusUnsupportedMediaType))*/
+			ResponseErrorWriter.WriteError(r, w, NewHTTPEquivError(NewMarshalerError(
+				"Content-Type header is %s, not application/json",
+				r.Header.Get("Content-Type"),
+			), http.StatusUnsupportedMediaType))
 			return
 		}
 		decoder := reflect.ValueOf(json.NewDecoder(r.Body))
 		out := decoder.MethodByName("Decode").Call([]reflect.Value{rq})
 		if !out[0].IsNil() {
-			WriteJSONError(w, NewJSONError(out[0].Interface().(error).Error()))
-			/*
-				WriteJSONError(w, NewHTTPEquivError(
-					out[0].Interface().(error),
-					http.StatusBadRequest,
-				))*/
+			ResponseErrorWriter.WriteError(r, w, NewHTTPEquivError(
+				out[0].Interface().(error),
+				http.StatusBadRequest,
+			))
 			return
 		}
 		r.Body.Close()
@@ -188,15 +193,11 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rs := out[2].Interface()
 	if !out[3].IsNil() {
 		err := out[3].Interface().(error)
-
-		WriteJSONError(w, err)
-		/*
-			if _, ok := err.(HTTPEquivError); ok {
-				WriteJSONError(w, err)
-			} else {
-				WriteJSONError(w, NewHTTPEquivError(err, code))
-			}
-		}*/
+		if _, ok := err.(HTTPEquivError); ok {
+			ResponseErrorWriter.WriteError(r, w, err)
+		} else {
+			ResponseErrorWriter.WriteError(r, w, NewHTTPEquivError(err, code))
+		}
 		return
 	}
 	if nil != header {
@@ -207,9 +208,39 @@ func (m *Marshaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if isReader {
+		contentType := wHeader.Get("Content-Type")
+		if "" == contentType {
+			ResponseErrorWriter.WriteError(r, w, NewHTTPEquivError(NewMarshalerError(
+				"Required Content-Type header missing from stream response"),
+				http.StatusInternalServerError))
+			return
+		}
+		if !acceptContentType(r, contentType) {
+			ResponseErrorWriter.WritePlaintextError(w, NewHTTPEquivError(NewMarshalerError(
+				"Accept header %q does not allow %q",
+				r.Header.Get("Accept"), contentType,
+			), http.StatusNotAcceptable))
+			return
+		}
+	} else {
+		wHeader.Set("Content-Type", "application/json")
+	}
 	w.WriteHeader(code)
 	if nil != rs && http.StatusNoContent != code && (out[2].Kind() != reflect.Ptr || !out[2].IsNil()) {
-		if err := json.NewEncoder(w).Encode(rs); nil != err {
+		if isReader {
+			reader := rs.(io.Reader)
+			_, err := io.Copy(w, reader)
+			if nil != err {
+				log.Println(err)
+			}
+			if isCloser {
+				closer := rs.(io.Closer)
+				if err := closer.Close(); nil != err {
+					log.Println(err)
+				}
+			}
+		} else if err := json.NewEncoder(w).Encode(rs); nil != err {
 			log.Println(err)
 		}
 	}

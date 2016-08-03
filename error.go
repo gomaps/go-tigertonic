@@ -11,64 +11,30 @@ import (
 	"unicode/utf8"
 )
 
-const (
-	UnknownErrorType    = "unknown"
-	UnknownErrorCode    = 0
-	JSONErrorType       = "json"
-	JSONErrorCode       = 9001
-	MarshalerErrorType  = "marshaler"
-	MarshalerErrorCode  = 9002
-	ValidationErrorType = "validation"
-	ValidationErrorCode = 8000
-)
-
-func NewMarshalerErrorEmptyInteface(method string) error {
-	return &AppError{
-		Type:           MarshalerErrorType,
-		Code:           MarshalerErrorCode,
-		Desc:           fmt.Sprintf("Empty interface is not suitable for %s request bodies", method),
-		HttpStatusCode: http.StatusInternalServerError,
-	}
-}
-
-func NewMarshalerErrorContentType(contentType string) error {
-	return &AppError{
-		Type:           MarshalerErrorType,
-		Code:           MarshalerErrorCode,
-		Desc:           fmt.Sprintf("Content-Type header is %s, not application/json", contentType),
-		HttpStatusCode: http.StatusUnsupportedMediaType,
-	}
-}
-
-func NewJSONError(desc string) error {
-	return &AppError{
-		Type:           JSONErrorType,
-		Code:           JSONErrorCode,
-		Desc:           desc,
-		HttpStatusCode: http.StatusBadRequest,
-	}
-}
-
-func NewMethodNotFoundError(desc string) error {
-	return &AppError{
-		Desc:           desc,
-		HttpStatusCode: http.StatusNotFound,
-	}
-}
-
-func NewMethodNotAllowed(desc string) error {
-	return &AppError{
-		Desc:           "Method not allowed, " + desc,
-		HttpStatusCode: http.StatusMethodNotAllowed,
-	}
-}
-
 func acceptJSON(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
 	if "" == accept {
 		return true
 	}
-	return strings.Contains(accept, "*/*") || strings.Contains(accept, "application/json")
+	return strings.Contains(accept, "*/*") || strings.Contains(accept, "application/*") || strings.Contains(accept, "application/json")
+}
+
+func acceptContentType(r *http.Request, contentType string) bool {
+	accept := r.Header.Get("Accept")
+	if "" == accept {
+		return true
+	}
+	if strings.Contains(accept, "*/*") {
+		return true
+	}
+	if strings.Contains(accept, contentType) {
+		return true
+	}
+	typeParts := strings.Split(contentType, "/")
+	if len(typeParts) < 2 {
+		return false
+	}
+	return strings.Contains(accept, fmt.Sprintf("%s/*", typeParts[0]))
 }
 
 func errorName(err error, fallback string) string {
@@ -96,110 +62,55 @@ func errorName(err error, fallback string) string {
 }
 
 func errorStatusCode(err error) int {
-	// For pointers to AppError interface
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.StatusCode()
-	}
-
-	// For direct interface to AppError
-	if appErr, ok := err.(AppError); ok {
-		return appErr.StatusCode()
-	}
-
-	// For direct interface to HTTPEquiv
 	if httpEquivError, ok := err.(HTTPEquivError); ok {
 		return httpEquivError.StatusCode()
 	}
-
 	return http.StatusInternalServerError
 }
 
-// BadField is an error type containing a field name and associated error.
-// This is the type returned from Validate.
-type BadField struct {
-	Field string `json:"field"`
-	Desc  string `json:"description"`
+// ResponseErrorWriter is a handler for outputting errors to the http.ResponseWriter
+var ResponseErrorWriter ErrorWriter = defaultErrorWriter{}
+
+type ErrorWriter interface {
+	WriteError(r *http.Request, w http.ResponseWriter, err error)
+	WriteJSONError(w http.ResponseWriter, err error)
+	WritePlaintextError(w http.ResponseWriter, err error)
 }
 
-func (b BadField) Error() string {
-	return fmt.Sprintf("field %s is invalid: %v", b.Field, b.Desc)
+type defaultErrorWriter struct {
 }
 
-type ValidationErrorWrapper struct {
-	AppError
-	Fields []error `json:"fields"`
-}
-
-type AppError struct {
-	Type           string `json:"type,omitempty"`
-	Code           int    `json:"code,omitempty"`
-	Desc           string `json:"description,omitempty"`
-	HttpStatusCode int    `json:"-"`
-}
-
-func (e AppError) Error() string {
-	return e.Desc
-}
-
-func (e AppError) StatusCode() int {
-	return e.HttpStatusCode
-}
-
-func (e AppError) ErrorType() string {
-	return e.Type
-}
-
-func (e AppError) ErrorCode() int {
-	return e.Code
-}
-
-func (e AppError) ErrorDesc() string {
-	return e.Desc
-}
-
-func NewAppError(errCode int, errType string, errDesc string) *AppError {
-	return &AppError{
-		Code: errCode,
-		Type: errType,
-		Desc: errDesc,
+func (d defaultErrorWriter) WriteError(r *http.Request, w http.ResponseWriter, err error) {
+	if acceptJSON(r) {
+		d.WriteJSONError(w, err)
+	} else {
+		d.WritePlaintextError(w, err)
 	}
 }
 
-func WriteJSONError(w http.ResponseWriter, err error) {
+func (d defaultErrorWriter) WriteJSONError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
-
 	w.WriteHeader(errorStatusCode(err))
 
-	if _, ok := err.(*AppError); !ok {
-		if _, ok = err.(*ValidationErrorWrapper); !ok {
-			err = AppError{
-				Type: errorName(err, "error"),
-				Desc: err.Error(),
-			}
+	errName := errorName(err, "error")
+	if SnakeCaseHTTPEquivErrors {
+		switch errName {
+		case "tigertonic.NotFound":
+			errName = "not_found"
+		case "tigertonic.MethodNotAllowed":
+			errName = "method_not_allowed"
 		}
 	}
 
-	if jsonErr := json.NewEncoder(w).Encode(err); nil != jsonErr {
+	if jsonErr := json.NewEncoder(w).Encode(map[string]string{
+		"description": err.Error(),
+		"error":       errName,
+	}); nil != jsonErr {
 		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
 	}
 }
 
-func WriteValidationErrors(w http.ResponseWriter, errs []error) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-
-	v := ValidationErrorWrapper{}
-	v.Type = ValidationErrorType
-	v.Code = ValidationErrorCode
-	v.Desc = "One or more fields contain a validation error"
-	v.Fields = errs
-
-	if jsonErr := json.NewEncoder(w).Encode(v); nil != jsonErr {
-		log.Printf("Error marshalling error response into JSON output: %s", jsonErr)
-	}
-}
-
-func WritePlaintextError(w http.ResponseWriter, err error) {
+func (d defaultErrorWriter) WritePlaintextError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(errorStatusCode(err))
 	fmt.Fprintf(w, "%s: %s", errorName(err, "error"), err)
